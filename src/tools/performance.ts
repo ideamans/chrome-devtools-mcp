@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import fs from 'node:fs/promises';
 import zlib from 'node:zlib';
 
 import type {ParsedArguments} from '../config/mcp-options.js';
@@ -18,11 +19,13 @@ import {logger} from '../utils/logger.js';
 
 import {ToolCategory} from './categories.js';
 import {
+  defineTool,
   definePageTool,
   type Context,
   type Response,
   type ContextPage,
   type PageToolFactory,
+  type ToolFactory,
 } from './ToolDefinition.js';
 
 const filePathSchema = zod
@@ -236,6 +239,57 @@ export const analyzeInsight: PageToolFactory = definePageTool(() => ({
       request.params.insightSetId,
       request.params.insightName as InsightName,
     );
+  },
+}));
+
+export const analyzeFile: ToolFactory = defineTool(() => ({
+  name: 'performance_analyze_file',
+  description:
+    'Analyzes a performance trace file from the local filesystem. This can be used to analyze traces exported from Chrome DevTools, Lighthouse, or other tools that generate Chrome trace format files.',
+  annotations: {
+    category: ToolCategory.PERFORMANCE,
+    readOnlyHint: true,
+  },
+  schema: {
+    filePath: zod
+      .string()
+      .describe(
+        'The absolute path to the trace file to analyze. Supports JSON trace files in Chrome trace format (e.g., trace.json, lighthouse-0.trace.json) and gzip-compressed ones (trace.json.gz).',
+      ),
+  },
+  blockedByDialog: false,
+  concurrency: 'exclusive',
+  verifyFilesSchema: {
+    filePath: true,
+  },
+  handler: async (request, response, context) => {
+    const {filePath} = request.params;
+
+    let buffer: Uint8Array;
+    try {
+      buffer = new Uint8Array(await fs.readFile(filePath));
+      if (filePath.endsWith('.gz')) {
+        buffer = new Uint8Array(zlib.gunzipSync(buffer));
+      }
+    } catch (e) {
+      const errorText = e instanceof Error ? e.message : JSON.stringify(e);
+      logger?.(`Error reading trace file: ${errorText}`);
+      response.appendResponseLine('An error occurred reading the trace file:');
+      response.appendResponseLine(errorText);
+      return;
+    }
+
+    const result = await parseRawTraceBuffer(buffer);
+    if (traceResultIsSuccess(result)) {
+      context.storeTraceRecording(result);
+      response.appendResponseLine(
+        `Successfully analyzed trace file: ${filePath}`,
+      );
+      response.attachTraceSummary(result);
+    } else {
+      response.appendResponseLine('There was an error parsing the trace file:');
+      response.appendResponseLine(result.error);
+    }
   },
 }));
 

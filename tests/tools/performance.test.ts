@@ -5,12 +5,15 @@
  */
 
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
 import {describe, it, beforeEach} from 'node:test';
 import zlib from 'node:zlib';
 
 import sinon from 'sinon';
 
 import {
+  analyzeFile,
   analyzeInsight,
   startTrace,
   stopTrace,
@@ -23,7 +26,7 @@ import {
 import {DevTools} from '../../src/third_party/index.js';
 import {createHandlerMocks} from '../mocks.js';
 import {loadTraceAsBuffer} from '../trace-processing/fixtures/load.js';
-import {withMcpContext} from '../utils.js';
+import {createTempDir, withMcpContext} from '../utils.js';
 
 describe('performance', () => {
   beforeEach(() => {
@@ -379,6 +382,77 @@ describe('performance', () => {
         'No recorded traces found. Record a performance trace so you have Insights to analyze.',
       );
       sinon.assert.notCalled(response.attachTraceInsight);
+    });
+  });
+
+  describe('performance_analyze_file', () => {
+    for (const fileName of ['trace.json', 'trace.json.gz']) {
+      it(`analyzes a trace file from the filesystem (${fileName})`, async () => {
+        using tempDir = createTempDir('mcp-trace-test-');
+        const rawData = loadTraceAsBuffer('web-dev-with-commit.json.gz');
+        const tempFilePath = path.join(tempDir.path, fileName);
+        fs.writeFileSync(
+          tempFilePath,
+          fileName.endsWith('.gz') ? zlib.gzipSync(rawData) : rawData,
+        );
+        const {context, response, args} = createHandlerMocks();
+
+        await analyzeFile(args).handler(
+          {params: {filePath: tempFilePath}},
+          response,
+          context,
+        );
+
+        sinon.assert.calledWith(
+          response.appendResponseLine,
+          `Successfully analyzed trace file: ${tempFilePath}`,
+        );
+        sinon.assert.calledOnce(context.storeTraceRecording);
+        sinon.assert.calledOnce(response.attachTraceSummary);
+        const trace = context.storeTraceRecording.firstCall.args[0];
+        assert.strictEqual(
+          trace.parsedTrace.data.Meta.mainFrameURL,
+          'https://web.dev/',
+        );
+        sinon.assert.calledWithExactly(response.attachTraceSummary, trace);
+      });
+    }
+
+    it('returns an error if the file does not exist', async () => {
+      using tempDir = createTempDir('mcp-trace-test-');
+      const {context, response, args} = createHandlerMocks();
+
+      await analyzeFile(args).handler(
+        {params: {filePath: path.join(tempDir.path, 'missing.json')}},
+        response,
+        context,
+      );
+
+      sinon.assert.calledWith(
+        response.appendResponseLine,
+        'An error occurred reading the trace file:',
+      );
+      sinon.assert.notCalled(context.storeTraceRecording);
+      sinon.assert.notCalled(response.attachTraceSummary);
+    });
+
+    it('returns an error if the file is not valid JSON', async () => {
+      using tempDir = createTempDir('mcp-trace-test-');
+      const tempFilePath = path.join(tempDir.path, 'invalid.json');
+      fs.writeFileSync(tempFilePath, 'not valid json');
+      const {context, response, args} = createHandlerMocks();
+
+      await analyzeFile(args).handler(
+        {params: {filePath: tempFilePath}},
+        response,
+        context,
+      );
+
+      sinon.assert.calledWith(
+        response.appendResponseLine,
+        'There was an error parsing the trace file:',
+      );
+      sinon.assert.notCalled(context.storeTraceRecording);
     });
   });
 

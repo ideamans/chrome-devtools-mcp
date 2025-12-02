@@ -1577,6 +1577,21 @@ export const commands: Commands = {
       },
     },
   },
+  performance_analyze_file: {
+    description:
+      'Analyzes a performance trace file from the local filesystem. This can be used to analyze traces exported from Chrome DevTools, Lighthouse, or other tools that generate Chrome trace format files.',
+    category: 'Performance',
+    args: {
+      filePath: {
+        name: 'filePath',
+        type: 'string',
+        description:
+          'The absolute path to the trace file to analyze. Supports JSON trace files in Chrome trace format (e.g., trace.json, lighthouse-0.trace.json) and gzip-compressed ones (trace.json.gz).',
+        required: true,
+        positional: true,
+      },
+    },
+  },
   performance_analyze_insight: {
     description:
       'Provides more detailed information on a specific Performance Insight of an insight set that was highlighted in the results of a trace recording.',

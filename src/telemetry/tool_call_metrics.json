@@ -1409,5 +1409,14 @@
         "argType": "number"
       }
     ]
+  },
+  {
+    "name": "performance_analyze_file",
+    "args": [
+      {
+        "name": "file_path_length",
+        "argType": "number"
+      }
+    ]
   }
 ]

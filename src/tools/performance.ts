@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import fs from 'node:fs/promises';
 import zlib from 'node:zlib';
 
 import {logger} from '../logger.js';
@@ -11,13 +12,14 @@ import {zod, DevTools} from '../third_party/index.js';
 import type {Page} from '../third_party/index.js';
 import type {InsightName, TraceResult} from '../trace-processing/parse.js';
 import {
+  getTraceSummary,
   parseRawTraceBuffer,
   traceResultIsSuccess,
 } from '../trace-processing/parse.js';
 
 import {ToolCategory} from './categories.js';
 import type {Context, Response} from './ToolDefinition.js';
-import {definePageTool} from './ToolDefinition.js';
+import {defineTool, definePageTool} from './ToolDefinition.js';
 
 const filePathSchema = zod
   .string()
@@ -173,6 +175,50 @@ export const analyzeInsight = definePageTool({
       request.params.insightSetId,
       request.params.insightName as InsightName,
     );
+  },
+});
+
+export const analyzeFile = defineTool({
+  name: 'performance_analyze_file',
+  description:
+    'Analyzes a performance trace file from the local filesystem. This can be used to analyze traces exported from Chrome DevTools, Lighthouse, or other tools that generate Chrome trace format files.',
+  annotations: {
+    category: ToolCategory.PERFORMANCE,
+    readOnlyHint: true,
+  },
+  schema: {
+    filePath: zod
+      .string()
+      .describe(
+        'The absolute path to the trace file to analyze. Supports JSON trace files in Chrome trace format (e.g., trace.json, lighthouse-0.trace.json).',
+      ),
+  },
+  handler: async (request, response, context) => {
+    const {filePath} = request.params;
+
+    try {
+      const buffer = await fs.readFile(filePath);
+      const result = await parseRawTraceBuffer(new Uint8Array(buffer));
+
+      if (traceResultIsSuccess(result)) {
+        context.storeTraceRecording(result);
+        const traceSummaryText = getTraceSummary(result);
+        response.appendResponseLine(
+          `Successfully analyzed trace file: ${filePath}`,
+        );
+        response.appendResponseLine(traceSummaryText);
+      } else {
+        response.appendResponseLine(
+          'There was an error parsing the trace file:',
+        );
+        response.appendResponseLine(result.error);
+      }
+    } catch (e) {
+      const errorText = e instanceof Error ? e.message : JSON.stringify(e);
+      logger(`Error reading trace file: ${errorText}`);
+      response.appendResponseLine('An error occurred reading the trace file:');
+      response.appendResponseLine(errorText);
+    }
   },
 });
 

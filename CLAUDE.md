@@ -68,6 +68,9 @@ upstream のタグは `chrome-devtools-mcp-vX.Y.Z` の形なので `v*` とは�
 タグを打ち直さずに出し直すときは Actions から workflow_dispatch で `ideamans-fork` を選んで起動する。
 PR でこのワークフローを変えたときは、公開せずに tarball の確認までが走る。
 
+package.json の `repository` は `ideamans/chrome-devtools-mcp` に替えてある（upstream は ChromeDevTools を指す）。provenance の検証で
+このリポジトリと照合され、違うと公開が `E422` で落ちる。upstream を取り込むときに戻さないこと（ワークフローが検査する）。
+
 **`npm run build` の出力を公開しない。** 依存を同梱しないので起動しない（0.21.0 がそうで、`ERR_MODULE_NOT_FOUND` で落ちる）。
 手元から出すことはしない（トークンは置かない。Trusted Publishing のみ）。
 

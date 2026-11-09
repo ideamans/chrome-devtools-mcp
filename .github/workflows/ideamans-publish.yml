@@ -1,22 +1,28 @@
-# ideamans fork: ideamans-fork への push で ideamans-chrome-devtools-mcp を npm の公開待ちに積む。
-# npm の Trusted Publishing（OIDC）の staged publish を使う。トークンの secret は使わない。
+# ideamans fork: `v*` のタグを push すると ideamans-chrome-devtools-mcp を npm にそのまま公開する（承認待ちにしない）。
+# npm の Trusted Publishing（OIDC）を使う。トークンの secret は使わない。
 # npmjs.com のパッケージ設定で、このリポジトリの ideamans-publish.yml を Trusted Publisher
-# （権限は stage publish）に登録してある前提。積んだ版は npmjs.com で 2FA つきの承認をすると公開される
-# （npm stage approve <id> でも可）。
+# （権限は publish）に登録してある前提。
+# リリース: ideamans-fork で package.json の version を確かめ → git tag vX.Y.Z && git push origin vX.Y.Z
+# （upstream のタグは chrome-devtools-mcp-vX.Y.Z の形なので `v*` とはぶつからない）
+# 既に npm にある版なら何もしない。workflow_dispatch で起動すると、選んだブランチの package.json の版を出す。
+# PR では、このファイルを変えたときだけ公開せずにビルドと tarball の確認までする。
 # upstream の publish-to-npm-on-tag.yml（chrome-devtools-mcp と chrome-devtools を出す）は fork では使わない。
 name: ideamans publish
 
 on:
   push:
-    branches:
-      - ideamans-fork
+    tags:
+      - 'v*'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/ideamans-publish.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: ideamans-publish
+  group: ideamans-publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -39,13 +45,23 @@ jobs:
           cache: npm
           node-version-file: '.nvmrc'
 
-      - name: Skip if this version is already on npm
+      - name: Check the tag and the registry
         id: check
         run: |
+          set -euo pipefail
           name=$(node -p "require('./package.json').name")
           version=$(node -p "require('./package.json').version")
-          if npm view "$name@$version" version >/dev/null 2>&1; then
-            echo "$name@$version is already published; skipping."
+          # upstream の版のタグ（package.json の name が chrome-devtools-mcp のもの）を誤って出さない
+          if [ "$name" != "ideamans-chrome-devtools-mcp" ]; then
+            echo "::error::package.json の name が ideamans-chrome-devtools-mcp ではない（$name）"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::タグ $GITHUB_REF_NAME が package.json の version（$version）と一致しない"
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && [ -n "$(npm view "$name@$version" version 2>/dev/null || true)" ]; then
+            echo "::notice::$name@$version は npm にある"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -84,11 +100,11 @@ jobs:
           npm install --no-audit --no-fund "$RUNNER_TEMP"/pack/*.tgz
           node "$GITHUB_WORKSPACE/scripts/ideamans-smoke.mjs" node_modules/ideamans-chrome-devtools-mcp/out/Default/gen/src/bin/chrome-devtools-mcp.js
 
-      # Trusted Publishing には npm 11.5.1 以上、staged publish にはさらに新しい npm が要る
+      # Trusted Publishing には npm 11.5.1 以上が要る
       - name: Update npm
         if: steps.check.outputs.skip != 'true'
         run: npm install -g npm@latest
 
-      - name: Stage the release on npm
-        if: steps.check.outputs.skip != 'true'
-        run: npm stage publish . --access public --ignore-scripts
+      - name: Publish to npm
+        if: steps.check.outputs.skip != 'true' && github.event_name != 'pull_request'
+        run: npm publish --access public --ignore-scripts

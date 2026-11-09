@@ -50,15 +50,27 @@ upstream のワークフローのうち `release-please.yml` / `publish-to-npm-o
 
 ## npm への公開
 
-`ideamans-fork` に push すると `.github/workflows/ideamans-publish.yml` が動く。
+`v*` のタグを push すると `.github/workflows/ideamans-publish.yml` が動き、**そのまま公開する**（承認待ちにしない）。
 
-1. npm に同じ版があれば何もしない（版は upstream に合わせるので、upstream を取り込んだときだけ出る）
-2. `npm run bundle` → `npm run verify-npm-package` → tarball を空のプロジェクトに入れて MCP を起動し、
+```bash
+git checkout ideamans-fork && git pull
+node -p "require('./package.json').version"   # 版は upstream に合わせる。これが npm に無い版であること
+git tag v1.12.0 && git push origin v1.12.0
+```
+
+1. タグと package.json の version が違えば落ちる。name が `ideamans-chrome-devtools-mcp` でなくても落ちる（upstream の版を出さない）
+2. npm に同じ版があれば何もしない
+3. `npm run bundle` → `npm run verify-npm-package` → tarball を空のプロジェクトに入れて MCP を起動し、
    `tools/list` に `performance_analyze_file` があるか確かめる（`scripts/ideamans-smoke.mjs`）
-3. `npm stage publish` で**公開待ちに積む**。npmjs.com で承認すると公開される（`npm stage approve <id>` でも可）
+4. `npm publish`（Trusted Publishing・OIDC。provenance は自動）
+
+upstream のタグは `chrome-devtools-mcp-vX.Y.Z` の形なので `v*` とはぶつからない。
+タグを打ち直さずに出し直すときは Actions から workflow_dispatch で `ideamans-fork` を選んで起動する。
+PR でこのワークフローを変えたときは、公開せずに tarball の確認までが走る。
 
 **`npm run build` の出力を公開しない。** 依存を同梱しないので起動しない（0.21.0 がそうで、`ERR_MODULE_NOT_FOUND` で落ちる）。
 手元から出すことはしない（トークンは置かない。Trusted Publishing のみ）。
 
 前提: npmjs.com の ideamans-chrome-devtools-mcp の設定で、Trusted Publisher に GitHub Actions・`ideamans/chrome-devtools-mcp`・
-ワークフロー `ideamans-publish.yml`・権限 stage publish を登録してあること。
+ワークフロー `ideamans-publish.yml`・権限 **publish** を登録してあること（stage publish の権限だけだと `npm publish` は
+`E403 OIDC permission denied` になる）。

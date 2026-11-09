@@ -119,7 +119,8 @@
     "eslint-plugin-import": {
       "eslint": "$eslint"
     },
-    "puppeteer-core": "$puppeteer"
+    "puppeteer-core": "$puppeteer",
+    "minimatch@^10.0.0": "^11.0.4"
   },
   "allowScripts": {
     "core-js": false,

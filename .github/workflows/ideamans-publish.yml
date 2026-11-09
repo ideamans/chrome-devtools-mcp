@@ -1,0 +1,94 @@
+# ideamans fork: ideamans-fork への push で ideamans-chrome-devtools-mcp を npm の公開待ちに積む。
+# npm の Trusted Publishing（OIDC）の staged publish を使う。トークンの secret は使わない。
+# npmjs.com のパッケージ設定で、このリポジトリの ideamans-publish.yml を Trusted Publisher
+# （権限は stage publish）に登録してある前提。積んだ版は npmjs.com で 2FA つきの承認をすると公開される
+# （npm stage approve <id> でも可）。
+# upstream の publish-to-npm-on-tag.yml（chrome-devtools-mcp と chrome-devtools を出す）は fork では使わない。
+name: ideamans publish
+
+on:
+  push:
+    branches:
+      - ideamans-fork
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ideamans-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'ideamans/chrome-devtools-mcp'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Required for OIDC
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      # registry-url は付けない（OIDC では要らず、付けると NODE_AUTH_TOKEN を参照する設定が書かれる）
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          cache: npm
+          node-version-file: '.nvmrc'
+
+      - name: Skip if this version is already on npm
+        id: check
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already published; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.skip != 'true'
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
+
+      - name: Sync DevTools dependencies
+        if: steps.check.outputs.skip != 'true'
+        shell: bash
+        run: npm run gclient-sync
+
+      # build ではなく bundle。build の出力は依存を同梱せず、公開すると起動しない（0.21.0 がそうだった）
+      - name: Build and bundle
+        if: steps.check.outputs.skip != 'true'
+        run: npm run bundle
+        env:
+          NODE_ENV: 'production'
+          NODE_OPTIONS: '--max_old_space_size=4096'
+
+      - name: Verify package contents
+        if: steps.check.outputs.skip != 'true'
+        run: npm run verify-npm-package
+
+      # 公開する tarball を空のプロジェクトに入れ、MCP が起動して performance_analyze_file を出すか確かめる
+      # （tools/list まではブラウザを起動しない）
+      - name: Smoke test the packed tarball
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack" "$RUNNER_TEMP/smoke"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/pack"
+          cd "$RUNNER_TEMP/smoke"
+          echo '{"private":true}' > package.json
+          npm install --no-audit --no-fund "$RUNNER_TEMP"/pack/*.tgz
+          node "$GITHUB_WORKSPACE/scripts/ideamans-smoke.mjs" node_modules/ideamans-chrome-devtools-mcp/out/Default/gen/src/bin/chrome-devtools-mcp.js
+
+      # Trusted Publishing には npm 11.5.1 以上、staged publish にはさらに新しい npm が要る
+      - name: Update npm
+        if: steps.check.outputs.skip != 'true'
+        run: npm install -g npm@latest
+
+      - name: Stage the release on npm
+        if: steps.check.outputs.skip != 'true'
+        run: npm stage publish . --access public --ignore-scripts

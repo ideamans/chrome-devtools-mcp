@@ -50,7 +50,10 @@
     "!**/*-tsconfig*.json",
     "!**/*.stamp"
   ],
-  "repository": "ChromeDevTools/chrome-devtools-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ideamans/chrome-devtools-mcp.git"
+  },
   "author": "Google LLC",
   "license": "Apache-2.0",
   "bugs": {

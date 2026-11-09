@@ -34,7 +34,7 @@ upstream の最新に自社のコミットを載せ直す（rebase）。衝突�
 ```bash
 git fetch upstream
 git checkout -b sync/<日付> upstream/main
-git cherry-pick <自社のコミット>        # git log upstream/main..origin/ideamans-fork で確かめる
+git cherry-pick $(git rev-list --reverse --first-parent --no-merges upstream/main..origin/ideamans-fork)
 npm ci && npm run gclient-sync && npm run bundle
 npm run test                           # performance_analyze_file のテストは tests/tools/performance.test.ts
 npm run gen && npm run check-format
@@ -42,3 +42,23 @@ git merge -s ours origin/ideamans-fork  # ideamans-fork へ早送りでマージ
 ```
 
 PR は `ideamans-fork` 宛てに作る（fork なので `gh pr create --repo ideamans/chrome-devtools-mcp --base ideamans-fork`）。
+CI が通ったら、GitHub のマージボタンではなく**早送りで push する**（`git push origin <ブランチ>:ideamans-fork`。PR は merged になる）。
+こうすると `--first-parent` で辿ったときに自社のコミットだけが upstream の上に並び、次の追従で上の `rev-list` がそのまま使える。
+
+upstream のワークフローのうち `release-please.yml` / `publish-to-npm-on-tag.yml` / `publish-to-mcp-registry-on-tag.yml` /
+`pre-release.yml` は fork では使わない（main や upstream のタグで動き、upstream の名前で出そうとして失敗する）。
+
+## npm への公開
+
+`ideamans-fork` に push すると `.github/workflows/ideamans-publish.yml` が動く。
+
+1. npm に同じ版があれば何もしない（版は upstream に合わせるので、upstream を取り込んだときだけ出る）
+2. `npm run bundle` → `npm run verify-npm-package` → tarball を空のプロジェクトに入れて MCP を起動し、
+   `tools/list` に `performance_analyze_file` があるか確かめる（`scripts/ideamans-smoke.mjs`）
+3. `npm stage publish` で**公開待ちに積む**。npmjs.com で承認すると公開される（`npm stage approve <id>` でも可）
+
+**`npm run build` の出力を公開しない。** 依存を同梱しないので起動しない（0.21.0 がそうで、`ERR_MODULE_NOT_FOUND` で落ちる）。
+手元から出すことはしない（トークンは置かない。Trusted Publishing のみ）。
+
+前提: npmjs.com の ideamans-chrome-devtools-mcp の設定で、Trusted Publisher に GitHub Actions・`ideamans/chrome-devtools-mcp`・
+ワークフロー `ideamans-publish.yml`・権限 stage publish を登録してあること。

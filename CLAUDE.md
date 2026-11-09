@@ -19,12 +19,32 @@
    upstream へは提案したが採用されていない（ChromeDevTools/chrome-devtools-mcp#639、2026-02 に stale で close。
    `performance_start_trace` に引数で持たせる案を求められた）
 2. パッケージ名を `ideamans-chrome-devtools-mcp` に変更（`package.json` / `package-lock.json`）。
-   コマンド名（bin）は upstream と同じ `chrome-devtools-mcp`。版も upstream に合わせる
+   bin は upstream の `chrome-devtools-mcp` / `chrome-devtools` に加え、パッケージと同名の `ideamans-chrome-devtools-mcp` を足してある
+   （無いと `npx ideamans-chrome-devtools-mcp@latest` が「could not determine executable to run」で起動しない。1.12.0 がそうだった）。
+   `repository` も ideamans を指す（後述）。版は upstream に合わせる（パッチで fork 固有の修正を出すことはある。1.12.1）
+3. `package.json` の `overrides` の `minimatch@^10.0.0`（脆弱性対策・開発用の依存だけ）。下の「脆弱性」を参照
 
 ## 利用者
 
 pagespeed-quest / pagespeed-rehearsal のテンプレートの `.mcp.json` が `npx ideamans-chrome-devtools-mcp@latest` で呼ぶ。
 **公開した版はすぐ利用者に届く**。
+
+1.12 から、ファイルを読み書きするツール（`performance_analyze_file` を含む）は MCP の roots の中だけに限られる。
+Claude Code は roots にプロジェクトのフォルダを渡すので、`inventory/artifacts/lighthouse-0.trace.json` はそのまま読める
+（2026-11-10 に確認）。roots を渡さないクライアントでは OS の一時フォルダしか読めないので、`--workspace=<フォルダ>` を足す
+（`--allow-unrestricted-paths` は非推奨）。
+
+## 脆弱性
+
+公開する tarball には依存が無い（`dependencies` が空で、必要なものは `npm run bundle` で同梱する）。
+Dependabot のアラートはすべて開発・ビルド用の依存のもので、利用者には届かない。
+
+- `.npmrc` の `min-release-age=7`（upstream の方針）で、公開から7日未満の版は入らない。`npm audit fix` が直さないときはまずこれを疑う
+- `minimatch@^10.0.0` → `^11.0.4`: GHSA-g3hv-75wg-m249。eslint 10 と typescript-eslint 8 が `^10` を固定しているため override。
+  upstream がそれぞれ minimatch 11 へ上げたら外す
+- 直していないもの（2026-11-10）: deepmerge（GHSA-gcqx-w48m-w2h4、修正版が無い。rollup のプラグイン経由のビルド時だけ）、
+  glob 13（GHSA-3g3m-2fjr-6pw4、lighthouse → @sentry/node → @sentry/bundler-plugins。@sentry/node 11.11.0 で直るが
+  公開から7日経っていない。2026-11-12 以降に `npm update @sentry/node` で消える）
 
 ## upstream への追従
 
@@ -57,6 +77,9 @@ git checkout ideamans-fork && git pull
 node -p "require('./package.json').version"   # 版は upstream に合わせる。これが npm に無い版であること
 git tag v1.12.0 && git push origin v1.12.0
 ```
+
+fork 固有のパッチ版（1.12.1 など）を出すときは、`package.json` と一緒に `src/version.ts` の `VERSION` も上げる
+（`--version` と MCP の serverInfo に出る。upstream では release-please が上げるが fork では動かない。1.12.1 は 1.12.0 と名乗っている）。
 
 1. タグと package.json の version が違えば落ちる。name が `ideamans-chrome-devtools-mcp` でなくても落ちる（upstream の版を出さない）
 2. npm に同じ版があれば何もしない

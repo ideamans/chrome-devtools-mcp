@@ -33,7 +33,8 @@ export async function checkForUpdates(message: string): Promise<void> {
   const cachePath = path.join(
     os.homedir(),
     '.cache',
-    'chrome-devtools-mcp',
+    // ideamans fork: keep apart from upstream's cache (it holds upstream's version)
+    'ideamans-chrome-devtools-mcp',
     'latest.json',
   );
 

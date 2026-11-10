@@ -42,7 +42,7 @@ import {ConfigParser} from '../config/ConfigParser.js';
 process.title = 'chrome-devtools';
 
 await checkForUpdates(
-  'Run `npm install -g chrome-devtools-mcp@latest` and `chrome-devtools start` to update and restart the daemon.',
+  'Run `npm install -g ideamans-chrome-devtools-mcp@latest` and `chrome-devtools start` to update and restart the daemon.',
 );
 
 const DEFAULT_CLI_ARGS = ['--viaCli'];

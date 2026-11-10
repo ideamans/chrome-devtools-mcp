@@ -38,7 +38,11 @@ const cachePath = process.argv[2];
 
 if (cachePath) {
   try {
-    const response = await fetch(`${getRegistry()}/chrome-devtools-mcp/latest`);
+    // ideamans fork: compare with the fork's own releases (<upstream>-i.<n>),
+    // not with upstream's chrome-devtools-mcp.
+    const response = await fetch(
+      `${getRegistry()}/ideamans-chrome-devtools-mcp/latest`,
+    );
     const data = response.ok ? await response.json() : null;
 
     if (

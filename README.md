@@ -1,5 +1,18 @@
 # Chrome DevTools for agents
 
+> [!NOTE]
+> **This is the ideamans fork, published as
+> [`ideamans-chrome-devtools-mcp`](https://www.npmjs.com/package/ideamans-chrome-devtools-mcp).**
+> It is upstream `chrome-devtools-mcp` plus one tool, `performance_analyze_file`,
+> which summarizes a local trace file (`trace.json` / `trace.json.gz`, e.g.
+> Lighthouse's `*.trace.json`) like `performance_stop_trace` does.
+> Versions are `<upstream version>-i.<n>`: `1.12.0-i.1` is upstream 1.12.0 with
+> the first ideamans revision. Use `npx ideamans-chrome-devtools-mcp@latest`.
+> Because these are prerelease-shaped versions, a semver range such as `^1.12.0`
+> does not select them; pin the exact version or use `@latest`.
+> `1.12.0` and `1.12.1` predate this scheme and are deprecated.
+> The rest of this README is upstream's.
+
 [![npm chrome-devtools-mcp package](https://img.shields.io/npm/v/chrome-devtools-mcp.svg)](https://npmjs.org/package/chrome-devtools-mcp)
 
 Chrome DevTools for agents (`chrome-devtools-mcp`) lets your coding agent (such as Antigravity, Claude, Cursor or Copilot)

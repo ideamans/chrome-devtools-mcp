@@ -1,6 +1,6 @@
 {
   "name": "ideamans-chrome-devtools-mcp",
-  "version": "1.12.1",
+  "version": "1.12.0-i.1",
   "description": "MCP server for Chrome DevTools customized by ideaman's Inc.",
   "type": "module",
   "bin": {

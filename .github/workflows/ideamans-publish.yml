@@ -1,22 +1,27 @@
-# ideamans fork: `v*` のタグを push すると ideamans-chrome-devtools-mcp を npm にそのまま公開する（承認待ちにしない）。
+# ideamans fork: `v<upstream>-i.<n>` のタグ（例 v1.12.0-i.1）を push すると ideamans-chrome-devtools-mcp を
+# npm にそのまま公開する（承認待ちにしない）。dist-tag は常に latest（prerelease の形の版なので明示が要る）。
 # npm の Trusted Publishing（OIDC）を使う。トークンの secret は使わない。
 # npmjs.com のパッケージ設定で、このリポジトリの ideamans-publish.yml を Trusted Publisher
 # （権限は publish）に登録してある前提。
-# リリース: ideamans-fork で package.json の version を確かめ → git tag vX.Y.Z && git push origin vX.Y.Z
-# （upstream のタグは chrome-devtools-mcp-vX.Y.Z の形なので `v*` とはぶつからない）
+# リリース: ideamans-fork で node scripts/ideamans-version.mjs bump → PR → git tag vX.Y.Z-i.N && git push origin vX.Y.Z-i.N
+# （upstream のタグは chrome-devtools-mcp-vX.Y.Z の形なので `v*-i.*` とはぶつからない）
 # 既に npm にある版なら何もしない。workflow_dispatch で起動すると、選んだブランチの package.json の版を出す。
-# PR では、このファイルを変えたときだけ公開せずにビルドと tarball の確認までする。
+# PR では、このファイル・版・スモークテストを変えたときだけ公開せずにビルドと tarball の確認までする。
 # upstream の publish-to-npm-on-tag.yml（chrome-devtools-mcp と chrome-devtools を出す）は fork では使わない。
 name: ideamans publish
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*-i.*'
   workflow_dispatch:
   pull_request:
     paths:
       - .github/workflows/ideamans-publish.yml
+      - .release-please-manifest.json
+      - package.json
+      - src/version.ts
+      - scripts/ideamans-*.mjs
 
 permissions:
   contents: read
@@ -68,6 +73,9 @@ jobs:
               console.error(`::error::${f} の repository（${u}）が ${want} と一致しない`)
               process.exit(1)
             }' "$PWD/package.json"
+          # 版は <upstream>-i.<n>。package.json・package-lock.json・src/version.ts（--version と serverInfo に出る）が
+          # 揃っていて、upstream の版（.release-please-manifest.json）に基づくこと
+          node scripts/ideamans-version.mjs check
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
             echo "::error::タグ $GITHUB_REF_NAME が package.json の version（$version）と一致しない"
             exit 1
@@ -110,13 +118,16 @@ jobs:
           cd "$RUNNER_TEMP/smoke"
           echo '{"private":true}' > package.json
           npm install --no-audit --no-fund "$RUNNER_TEMP"/pack/*.tgz
-          node "$GITHUB_WORKSPACE/scripts/ideamans-smoke.mjs" node_modules/ideamans-chrome-devtools-mcp/out/Default/gen/src/bin/chrome-devtools-mcp.js
+          node "$GITHUB_WORKSPACE/scripts/ideamans-smoke.mjs" node_modules/ideamans-chrome-devtools-mcp/out/Default/gen/src/bin/chrome-devtools-mcp.js \
+            "$(node -p "require('$GITHUB_WORKSPACE/package.json').version")"
 
       # Trusted Publishing には npm 11.5.1 以上が要る
       - name: Update npm
         if: steps.check.outputs.skip != 'true'
         run: npm install -g npm@latest
 
+      # 版が prerelease の形（-i.N）なので、npm は --tag 無しでは公開しない。latest を明示して
+      # npx ideamans-chrome-devtools-mcp@latest が新しい版を取るようにする（1.12.1 より semver で小さくても latest になる）
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true' && github.event_name != 'pull_request'
-        run: npm publish --access public --ignore-scripts
+        run: npm publish --access public --ignore-scripts --tag latest
